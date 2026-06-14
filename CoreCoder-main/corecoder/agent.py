@@ -10,12 +10,15 @@ which means it's done working and ready to report back.
 """
 
 import concurrent.futures
+from pathlib import Path
 from .llm import LLM
 from .tools import ALL_TOOLS, get_tool
 from .tools.base import Tool
 from .tools.agent import AgentTool
+from .tools.skill import SkillTool, ListSkillsTool
 from .prompt import system_prompt
 from .context import ContextManager
+from .skill import SkillManager
 
 
 class Agent:
@@ -25,19 +28,33 @@ class Agent:
         tools: list[Tool] | None = None,
         max_context_tokens: int = 128_000,
         max_rounds: int = 50,
+        skills_dir: str | Path | None = None,
     ):
         self.llm = llm
         self.tools = tools if tools is not None else ALL_TOOLS
         self.messages: list[dict] = []
         self.context = ContextManager(max_tokens=max_context_tokens)
         self.max_rounds = max_rounds
-        self._system = system_prompt(self.tools)
+
+        # Initialize skill system
+        self.skill_manager = SkillManager(skills_dir=skills_dir)
+        self._wire_up_skills()
+
+        self._system = system_prompt(self.tools, self.skill_manager)
 
         # wire up sub-agent capability
         for t in self.tools:
             # 检测工具列表中是否有 AgentTool，如果有，设置其 _parent_agent 属性为当前 Agent 实例
             if isinstance(t, AgentTool):
                 t._parent_agent = self
+
+    def _wire_up_skills(self):
+        """Connect SkillManager to skill-related tools."""
+        for t in self.tools:
+            if isinstance(t, SkillTool):
+                t._skill_manager = self.skill_manager
+            elif isinstance(t, ListSkillsTool):
+                t._skill_manager = self.skill_manager
 
     def _full_messages(self) -> list[dict]:
         return [{"role": "system", "content": self._system}] + self.messages

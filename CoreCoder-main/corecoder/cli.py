@@ -252,6 +252,59 @@ def _repl(agent: Agent, config: Config, llm_cls=None):
                     console.print(f"  [cyan]{s['id']}[/cyan] ({s['model']}, {s['saved_at']}) {s['preview']}")
             continue
 
+        # /skills 快捷命令：列出所有可用 skill
+        if user_input == "/skills":
+            skills = agent.skill_manager.list_skills()
+            if not skills:
+                console.print("[dim]No skills available.[/dim]")
+            else:
+                console.print(f"[bold]Available Skills ({len(skills)}):[/bold]")
+                for s in skills:
+                    status = "[green]✓ loaded[/green]" if s.is_loaded() else "[dim]○ not loaded[/dim]"
+                    console.print(f"  [cyan]/{s.name}[/cyan] {status}")
+                    console.print(f"    {s.description}")
+            continue
+
+        # /skill_name 手动触发 Skill（需放在所有内置命令之后）
+        if user_input.startswith("/"):
+            parts = user_input[1:].strip().split(None, 1)
+            skill_name = parts[0]
+            inline_task = parts[1] if len(parts) > 1 else ""
+            skill = agent.skill_manager.get(skill_name)
+            if skill is not None:
+                content = skill.load()
+                console.print(f"[green]✓ Skill [bold]{skill.name}[/bold] loaded manually[/green]")
+                # 如果命令后面没有附带任务，则提示用户输入
+                if inline_task:
+                    task_input = inline_task
+                else:
+                    try:
+                        task_input = pt_prompt(
+                            f"[{skill.name}] > ",
+                            history=history,
+                            multiline=True,
+                            key_bindings=kb,
+                            prompt_continuation="...  ",
+                        ).strip()
+                    except (EOFError, KeyboardInterrupt):
+                        console.print("\n[yellow]Cancelled.[/yellow]")
+                        continue
+                if not task_input:
+                    console.print("[dim]No task provided, skill cancelled.[/dim]")
+                    continue
+                # 将 Skill 指令 + 用户任务一起交给 agent
+                user_input = (
+                    f"[System: The following skill '{skill.name}' has been "
+                    f"manually activated by the user. You MUST follow its instructions.]\n\n"
+                    f"{content}\n\n"
+                    f"---\n\nUser task: {task_input}"
+                )
+                # 继续往下走，交给 agent.chat 处理
+            else:
+                console.print(f"[yellow]Unknown command or skill: /{skill_name}[/yellow]")
+                console.print("[dim]Use /help for commands, /skills to list available skills.[/dim]")
+                continue
+
         # call the agent
         streamed: list[str] = []
 
@@ -288,7 +341,15 @@ def _show_help():
         "  /diff          Show files modified this session\n"
         "  /save          Save session to disk\n"
         "  /sessions      List saved sessions\n"
+        "  /skills        List available skills\n"
+        "  /<skill_name>  Manually activate a skill\n"
         "  quit           Exit CoreCoder\n"
+        "\n"
+        "[bold]Skills:[/bold]\n"
+        "  Passive: describe your task naturally, the agent will load\n"
+        "          the matching skill automatically when needed.\n"
+        "  Active:  type /<skill_name> to force-load a specific skill,\n"
+        "          then enter your task at the prompt.\n"
         "\n"
         "[bold]Input:[/bold]\n"
         "  Enter          Submit message\n"

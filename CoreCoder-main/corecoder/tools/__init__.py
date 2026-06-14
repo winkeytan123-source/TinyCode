@@ -7,6 +7,7 @@ from .edit import EditFileTool
 from .glob_tool import GlobTool
 from .grep import GrepTool
 from .agent import AgentTool
+from .skill import SkillTool, ListSkillsTool
 
 ALL_TOOLS = [
     BashTool(),
@@ -16,6 +17,8 @@ ALL_TOOLS = [
     GlobTool(),
     GrepTool(),
     AgentTool(),
+    SkillTool(),
+    ListSkillsTool(),
 ]
 
 
